@@ -34,13 +34,13 @@ class Methods:
         self.usethreads = torch.get_num_threads()-2 #useable thread num
         self.model.eval()
         ###### modified #####
-        complex_model = FSRCNN(scale_factor=4, num_channels=3).to(self.device)
-        complex_model.load_state_dict(torch.load("./weights/x4_3ch_fsrcnn_9.pth", map_location=torch.device(self.device)))
-        light_model = FSRCNN(scale_factor=4, num_channels=3, d=32, m=1).to(self.device)
-        light_model.load_state_dict(torch.load("./weights/x4_3ch_lightfsrcnn_9.pth", map_location=torch.device(self.device)))
+        #complex_model = FSRCNN(scale_factor=4, num_channels=1).to(self.device)
+        #complex_model.load_state_dict(torch.load("./weights/x4_3ch_fsrcnn_9.pth", map_location=torch.device(self.device)))
+        #light_model = FSRCNN(scale_factor=4, num_channels=1, d=32, m=1).to(self.device)
+        #light_model.load_state_dict(torch.load("./weights/x4_3ch_lightfsrcnn_9.pth", map_location=torch.device(self.device)))
         upsample = torch.nn.Upsample(scale_factor=4)
-        self.accelerated_model = classification.CategoricalCNN(light_model, complex_model, input_shape=(3,140,260), device=self.device).to(self.device)
-        self.accelerated_model.load_state_dict(torch.load("./weights/test.pth", map_location=torch.device(self.device)), strict=False)
+        self.accelerated_model = classification.CategoricalCNN(upsample, self.model, input_shape=(1,140,260), device=self.device).to(self.device)
+        #self.accelerated_model.load_state_dict(torch.load("./weights/test.pth", map_location=torch.device(self.device)), strict=False)
         self.accelerated_model.eval()
         #####################
 
@@ -152,7 +152,8 @@ class Methods:
 
         bic_time = time.perf_counter() 
         for i, image in enumerate(frames, 0):
-            SRframes[i] = cv2.resize(image, None, fx = 4, fy = 4, interpolation = cv2.INTER_CUBIC)
+            #SRframes[i] = cv2.resize(image, None, fx = 4, fy = 4, interpolation = cv2.INTER_CUBIC)
+            SRframes[i] = cv2.resize(image, dsize=(1040, 560), interpolation = cv2.INTER_CUBIC)
 
         SRnum = 0
         for i in range(filenum // ign):
@@ -164,18 +165,21 @@ class Methods:
                     SRnum = -ign + j
                     continue
                 image = frames[index].astype(np.float32)
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB).transpose(2, 0, 1)/255
                 bicubic = SRframes[index].astype(np.float32)
-                image = torch.from_numpy(image).to(self.device)
-                image = transforms.Resize((140, 260))(image)
-                image = image.unsqueeze(0)
-                with torch.no_grad():
-                    preds, _ = self.accelerated_model(image)
-                    preds = preds*255
+                Luminance = Converter.convert_bgr_to_y(image)
+                Luminance = torch.from_numpy(Luminance).to(self.device)
+                Luminance = Luminance.unsqueeze(0).unsqueeze(0)
+                Luminance = transforms.Resize((140,260))(Luminance)
 
-                preds = preds.cpu().numpy().squeeze(0).transpose(1, 2, 0)
-                preds = cv2.cvtColor(preds, cv2.COLOR_RGB2BGR)
-                SRframes[index] = preds.astype(np.uint8)
+                ycbcr = Converter.convert_bgr_to_ycbcr(bicubic)
+
+                with torch.no_grad():
+                    preds, _ = self.accelerated_model(Luminance)
+                    preds = preds.mul(255.0)
+
+                preds = preds.cpu().numpy().squeeze(0).squeeze(0)
+                output = np.array([preds, ycbcr[..., 1], ycbcr[..., 2]]).transpose([1, 2, 0])
+                SRframes[index] = np.clip(Converter.convert_ycbcr_to_bgr(output), 0.0, 255.0).astype(np.uint8)
                 isSR[index] = True
                 timecount = time.perf_counter() - start_time 
                 if Methods.finflag == 1 or limit != None and timecount > limit:

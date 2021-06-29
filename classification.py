@@ -57,12 +57,16 @@ class CategoricalCNN(nn.Module):
     def process_lightmodel(self, blocked_img, mask):
         global output
         input_lightmodel = blocked_img[mask!=True]
-        t_output_lightmodel = self.light_model(input_lightmodel).clamp(0.0, 0.6)+0.4
+        if input_lightmodel.size(0) == 0:
+            return
+        t_output_lightmodel = self.light_model(input_lightmodel).clamp(0.0, 1.0)
         output[mask!=True] = t_output_lightmodel
 
     def process_complexmodel(self, blocked_img, mask):
         global output
         input_complexmodel = blocked_img[mask]
+        if input_complexmodel.size(0) == 0:
+            return
         t_output_complexmodel = self.complex_model(input_complexmodel).clamp(0.0, 1.0)
         output[mask] = t_output_complexmodel
 
@@ -73,7 +77,6 @@ class CategoricalCNN(nn.Module):
         class_vector = self.class_last_part(x)
         class_vector = class_vector.reshape(-1)
         input = self.pad(input)
-
         blocked_img = self.unfold(input)
         blocked_img = blocked_img.transpose(1,2).reshape(
             -1,
@@ -81,8 +84,8 @@ class CategoricalCNN(nn.Module):
             self.block_size+2*padding,
             self.block_size+2*padding
         )
-
-        mask = torch.where(class_vector>1.0, True, False)
+        mean = torch.mean(class_vector)
+        mask = torch.where(class_vector>mean, False, False)
         
         #elapsed_time = time.time() - start_time
         #print("init_time: {0}".format(elapsed_time))
@@ -148,13 +151,22 @@ class CategoricalCNN(nn.Module):
             blocked_targets.size(0)*\
             blocked_targets.size(1)*\
             blocked_targets.size(2)*\
-            blocked_targets.size(3))*25
+            blocked_targets.size(3))*30
 
         loss2 = torch.sub(1,class_vector)
         loss2 = torch.sum(loss2,dim=0)
         loss2 = torch.div(loss2, class_vector.size(0))
         
-        loss = torch.add(loss1, loss2)
+        t = torch.sub(class_vector, 0.4)
+        loss3 = torch.sum(t)
+        loss3 = torch.pow(loss3, 2)
+        loss3 = torch.sqrt(loss3)/20
+        loss4 = torch.pow(t, 2)
+        loss4 = torch.sum(loss4)
+        loss4 = torch.sqrt(loss4)
+        loss4 = torch.div(1, loss4)
+
+        loss = loss1 + loss2 + loss3 + loss4
         return loss
         
 
