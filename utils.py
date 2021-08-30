@@ -63,3 +63,36 @@ def calcChange(isSR, state):
             count += 1
             state = framestate
     return count, state
+
+def splitImages(frames, size):
+    np_frames = np.array(frames)
+    np_frames = np_frames.transpose(0,3,1,2)
+    tensor_frames = torch.from_numpy(np_frames.astype(np.float32)).clone()
+    blocked_img = torch.nn.Unfold(kernel_size=16, stride=16)(tensor_frames)
+    blocked_img = blocked_img.transpose(1,2).reshape(
+            -1,
+            np_frames.shape[1],
+            size,
+            size
+        )
+    npblocked_img = blocked_img.to('cpu').detach().numpy().copy()
+    npblocked_img = npblocked_img.transpose(0,2,3,1)
+
+    return npblocked_img
+
+def unsplitImages(frames,input_shape,size,scale):
+    frames = np.array(frames)
+    frames = frames.transpose(3,1,0,2).reshape(
+        input_shape[0],
+        size*scale,
+        -1,
+        input_shape[2]*scale
+    )
+    frames = frames.transpose(0,2,1,3).reshape(
+        input_shape[0],
+        -1,
+        input_shape[1]*scale,
+        input_shape[2]*scale
+    ).transpose(1,2,3,0)
+
+    return frames

@@ -7,7 +7,7 @@ import numpy as np
 from pathlib import Path
 import time
 from models import FSRCNN
-from utils import Converter, AlgorithmSelecter, calcChange
+from utils import Converter, AlgorithmSelecter, calcChange, splitImages, unsplitImages
 import warnings
 import classification
 import torchvision.transforms as transforms
@@ -45,7 +45,7 @@ class Methods:
         #####################
 
     def FSSR(self, frames, SRframes, algonum = 2, ign = 10, fps = 60., limit = None, faststart = False):
-        torch.set_num_threads(self.usethreads) #Determine num of threads   
+        torch.set_num_threads(self.usethreads) #Determine num of threads  
         filenum = len(frames)
 
         algorithm = ['ORB','AGAST','FAST','MSER','AKAZE','BRISK','KAZE','BLOB']
@@ -114,6 +114,95 @@ class Methods:
         if Methods.finflag == 0:
             SRnum = filenum
         
+        Changenum, self.state = calcChange(isSR, self.state)
+        return SRnum, Changenum
+    #####  myFSSR  #####
+    def FSSRv2(self, frames, SRframes, algonum = 2, ign = 10, fps = 60., limit = None, faststart = False):
+        block_size = 16
+        scale = 4
+        image_size = (144, 256)
+        h_index = image_size[0]//block_size
+        w_index = image_size[1]//block_size
+
+        torch.set_num_threads(self.usethreads) #Determine num of threads  
+        splitFrames = splitImages(frames,16) 
+        filenum = len(splitFrames)
+
+        algorithm = ['ORB','AGAST','FAST','MSER','AKAZE','BRISK','KAZE','BLOB']
+        isSR = [False] * filenum
+        tmpSRframes = [None] * filenum
+        start_time = time.perf_counter()
+
+        ##########  Ranking ##########
+        finder = AlgorithmSelecter(algonum)
+
+        keysum = 0
+        keylist = []
+
+        for i, image in enumerate(splitFrames, 1):
+
+            kp = finder.detect(image)
+            keysum += len(kp)
+
+            if i % ign == 0:
+                keylist = keylist + [keysum]
+                keysum = 0
+
+            if i == len(splitFrames) and i % ign != 0:
+                keysum = int(keysum * (ign / (i % ign)))
+                keylist = keylist + [keysum]
+
+        np_keylist = np.array(keylist)
+        ranklist = np.argsort(-np_keylist)
+
+        ########## SuperResolution ##########
+
+        bic_time = time.perf_counter() 
+        for i, image in enumerate(frames, 0):
+            SRframes[i] = cv2.resize(image, None, fx = 4, fy = 4, interpolation = cv2.INTER_CUBIC)
+
+        SRnum = 0
+        for i in range(filenum // ign):
+            if faststart and limit != None:
+                break
+            for j in range(0, ign):
+                index = ranklist[i] * ign + j
+                if index >= filenum:
+                    SRnum = -ign + j
+                    continue
+                image = splitFrames[index].astype(np.float32)
+                x = index//(h_index*w_index)                                                  ###変更！！！！！！！！！！
+                y = index%(h_index*w_index)//w_index*block_size*scale
+                z = index%(h_index*w_index)%w_index*block_size*scale
+                bicubic = SRframes[x][y:y+64,z:z+64,:].astype(np.float32)
+                #print("x:{} y:{} z:{} shape:{}".format(x,y,z,SRframes[x].shape))
+                Luminance = Converter.convert_bgr_to_y(image)
+                Luminance = torch.from_numpy(Luminance).to(self.device)
+                Luminance = Luminance.unsqueeze(0).unsqueeze(0)
+                ycbcr = Converter.convert_bgr_to_ycbcr(bicubic)
+
+                with torch.no_grad():
+                    preds = self.model(Luminance).mul(255.0)
+
+                preds = preds.cpu().numpy().squeeze(0).squeeze(0)
+                output = np.array([preds, ycbcr[..., 1], ycbcr[..., 2]]).transpose([1, 2, 0])
+                SRframes[x][y:y+64,z:z+64,:] = np.clip(Converter.convert_ycbcr_to_bgr(output), 0.0, 255.0).astype(np.uint8)
+                isSR[index] = True
+                timecount = time.perf_counter() - start_time 
+                if Methods.finflag == 1 or limit != None and timecount > limit:
+                    SRnum += i*ign + j + 1
+                    break
+            if Methods.finflag == 1 or limit != None and timecount > limit:
+                break
+
+        #index = 0
+        #tmpSRframes = unsplitImages(tmpSRframes, (3, 144, 256), 16, 4)
+        #for x in tmpSRframes:
+        #    SRframes[index] = x.astype(np.uint8)
+        #    index += 1
+
+        if Methods.finflag == 0:
+            SRnum = filenum
         Changenum, self.state = calcChange(isSR, self.state)
         return SRnum, Changenum
 

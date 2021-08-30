@@ -56,7 +56,7 @@ def SRprocess(frames, SRframes, method, ign, limit = None):
         del SRframes[len(frames):]
 
     if method == "FSSR":
-        SRnum, Changenum = SRmethods.FSSR(frames, SRframes, algonum, ign, fps, limit, faststart)
+        SRnum, Changenum = SRmethods.FSSRv2(frames, SRframes, algonum, ign, fps, limit, faststart)
 
         if outEval:
             f.write("{},{},{}\n".format(batchcount, SRnum, Changenum))
