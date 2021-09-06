@@ -56,6 +56,14 @@ def SRprocess(frames, SRframes, method, ign, limit = None):
         del SRframes[len(frames):]
 
     if method == "FSSR":
+        SRnum, Changenum = SRmethods.FSSR(frames, SRframes, algonum, ign, fps, limit, faststart)
+
+        if outEval:
+            f.write("{},{},{}\n".format(batchcount, SRnum, Changenum))
+
+        SRsum += SRnum
+        Changesum += Changenum
+    elif method == "FSSRv2":
         SRnum, Changenum = SRmethods.FSSRv2(frames, SRframes, algonum, ign, fps, limit, faststart)
 
         if outEval:
@@ -107,6 +115,8 @@ def SR(method, ign, buftime):
             if outEval:
                 if method == "FSSR":
                     f.write("Total,{},{}\n".format(SRsum, Changesum))
+                if method == "FSSRv2":
+                    f.write("Total,{},{}\n".format(SRsum, Changesum))
                 if method == "AFSSR":
                     f.write("Total,{},{}\n".format(SRsum, Changesum))
                 elif method == "NSSR":
@@ -121,6 +131,8 @@ def SR(method, ign, buftime):
 
             if outEval:
                 if method == "FSSR":
+                    f.write("Total,{},{}\n".format(SRsum, Changesum))
+                if method == "FSSRv2":
                     f.write("Total,{},{}\n".format(SRsum, Changesum))
                 if method == "AFSSR":
                     f.write("Total,{},{}\n".format(SRsum, Changesum))
@@ -143,7 +155,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-b","--batchsize", type=int, default=10)
     parser.add_argument("-s","--segsize", type=float, default=20.)
-    parser.add_argument("-m","--method", type=str, choices=['FSSR', 'NSSR', 'AFSSR', 'BIC'], default='FSSR')
+    parser.add_argument("-m","--method", type=str, choices=['FSSR', 'FSSRv2', 'NSSR', 'AFSSR', 'BIC'], default='FSSR')
     parser.add_argument("-e","--eval", action="store_true")
     parser.add_argument("-f","--faststart", action="store_true")
     args = parser.parse_args()
@@ -168,6 +180,7 @@ if __name__ == '__main__':
     lock2 = threading.Lock()
 
     url = 'https://youtu.be/BBvod49uySQ' # Play video URL by Youtube
+    #url = 'https://youtu.be/_1VZcrBMqLU'
     
     vPafy = pafy.new(url)
     play = vPafy.videostreams[1]
@@ -203,6 +216,9 @@ if __name__ == '__main__':
     if outEval:
         evalfile = "{}{}{}_{}ign{}buftime_count.csv".format(savedir, os.sep, method, ign, int(buftime))
         if method == "FSSR":
+            f = open(evalfile, mode='w')
+            f.write("batch, SRnum, Changenum\n")
+        if method == "FSSRv2":
             f = open(evalfile, mode='w')
             f.write("batch, SRnum, Changenum\n")
         if method == "AFSSR":
