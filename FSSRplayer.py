@@ -180,7 +180,9 @@ if __name__ == '__main__':
     lock2 = threading.Lock()
 
     url = 'https://youtu.be/BBvod49uySQ' # Play video URL by Youtube
-    #url = 'https://youtu.be/_1VZcrBMqLU'
+    #url = 'https://youtu.be/_1VZcrBMqLU' # monochro anime
+    url = 'https://youtu.be/JRnk1AHubqw' # monochro real
+    #url = 'https://youtu.be/c6Pusffuwis' # color anime
     
     vPafy = pafy.new(url)
     play = vPafy.videostreams[1]

@@ -45,6 +45,7 @@ class Methods:
         #####################
 
     def FSSR(self, frames, SRframes, algonum = 2, ign = 10, fps = 60., limit = None, faststart = False):
+        #s = time.time()
         torch.set_num_threads(self.usethreads) #Determine num of threads  
         filenum = len(frames)
 
@@ -53,7 +54,6 @@ class Methods:
         start_time = time.perf_counter()
 
         ##########  Ranking ##########
-        #s = time.time()
         finder = AlgorithmSelecter(algonum)
 
         keysum = 0
@@ -131,34 +131,30 @@ class Methods:
         w_index = image_size[1]//block_size
 
         torch.set_num_threads(self.usethreads) #Determine num of threads  
-        splitFrames = splitImages(frames,block_size) 
-        filenum = len(splitFrames)
+        filenum = len(SRframes)*h_index*w_index
 
         algorithm = ['ORB','AGAST','FAST','MSER','AKAZE','BRISK','KAZE','BLOB']
         isSR = [False] * filenum
-        tmpSRframes = [None] * filenum
         start_time = time.perf_counter()
 
         ##########  Ranking ##########
-        #s = time.time()
         finder = AlgorithmSelecter(algonum)
 
         keysum = 0
         keylist = []
 
-        for i, image in enumerate(splitFrames, 1):
-
-            kp = finder.detect(image)
-            keysum += len(kp)
-
-            if i % ign == 0:
-                keylist = keylist + [keysum]
-                keysum = 0
-
-            if i == len(splitFrames) and i % ign != 0:
-                keysum = int(keysum * (ign / (i % ign)))
-                keylist = keylist + [keysum]
-
+        #s = time.time()
+        #for index in range(filenum):
+        #    x = index//(h_index*w_index)                                                  
+        #    y = index%(h_index*w_index)//w_index*block_size
+        #    z = index%(h_index*w_index)%w_index*block_size
+        #    kp = finder.detect(frames[x][y:y+block_size,z:z+block_size,:])
+        #    keylist = keylist + [len(kp)]
+        ####### ↑↓ 動作は同じだが下のほうが早い
+        keylist = [len(finder.detect(frames[index//(h_index*w_index)][index%(h_index*w_index)//w_index*block_size:index%(h_index*w_index)//w_index*block_size+block_size,index%(h_index*w_index)%w_index*block_size:index%(h_index*w_index)%w_index*block_size+block_size,:]))
+            for index in range(filenum)
+        ]
+        #######
         np_keylist = np.array(keylist)
         ranklist = np.argsort(-np_keylist)
 
@@ -174,36 +170,34 @@ class Methods:
         for i in range(filenum // ign):
             if faststart and limit != None:
                 break
-            for j in range(0, ign):
-                #s = time.time()
-                index = ranklist[i] * ign + j
-                if index >= filenum:
-                    SRnum = -ign + j
-                    continue
-                image = splitFrames[index].astype(np.float32)
+            #s = time.time()
+            indexlist = ranklist[i*ign:i*ign+ign]
+            Luminance = np.array([Converter.convert_bgr_to_y(frames[index//(h_index*w_index)]
+                [index%(h_index*w_index)//w_index*block_size:index%(h_index*w_index)//w_index*block_size+block_size,
+                index%(h_index*w_index)%w_index*block_size:index%(h_index*w_index)%w_index*block_size+block_size,:].
+                astype(np.float32)) for index in indexlist])
+            ycbcr = np.array([Converter.convert_bgr_to_ycbcr(SRframes[index//(h_index*w_index)]
+                [index%(h_index*w_index)//w_index*block_size*scale:index%(h_index*w_index)//w_index*block_size*scale+block_size*scale,
+                index%(h_index*w_index)%w_index*block_size*scale:index%(h_index*w_index)%w_index*block_size*scale+block_size*scale,:].astype(np.float32)) for index in indexlist])
+            Luminance = torch.from_numpy(Luminance).to(self.device)
+            Luminance = Luminance.unsqueeze(1)
+
+            with torch.no_grad():
+                preds = self.model(Luminance).mul(255.0)
+
+            preds = preds.cpu().numpy().squeeze(1)
+            output = np.array([preds, ycbcr[..., 1], ycbcr[..., 2]]).transpose([1, 2, 3, 0])
+            for i, index in enumerate(indexlist):
                 x = index//(h_index*w_index)                                                  
                 y = index%(h_index*w_index)//w_index*block_size*scale
                 z = index%(h_index*w_index)%w_index*block_size*scale
-                bicubic = SRframes[x][y:y+block_size*scale,z:z+block_size*scale,:].astype(np.float32)
-                Luminance = Converter.convert_bgr_to_y(image)
-                Luminance = torch.from_numpy(Luminance).to(self.device)
-                Luminance = Luminance.unsqueeze(0).unsqueeze(0)
-                ycbcr = Converter.convert_bgr_to_ycbcr(bicubic)
-
-                with torch.no_grad():
-                    preds = self.model(Luminance).mul(155.0)
-
-                preds = preds.cpu().numpy().squeeze(0).squeeze(0)
-                output = np.array([preds, ycbcr[..., 1], ycbcr[..., 2]]).transpose([1, 2, 0])
-                SRframes[x][y:y+block_size*scale,z:z+block_size*scale,:] = np.clip(Converter.convert_ycbcr_to_bgr(output), 0.0, 255.0).astype(np.uint8)
+                SRframes[x][y:y+block_size*scale,z:z+block_size*scale,:] = np.clip(Converter.convert_ycbcr_to_bgr(output[i]), 0.0, 255.0).astype(np.uint8)
                 isSR[index] = True
-                timecount = time.perf_counter() - start_time 
-                if Methods.finflag == 1 or limit != None and timecount > limit:
-                    SRnum += i*ign + j + 1
-                    break
-                #elapsed_time = time.time() - s
-                #print("time: {0}".format(elapsed_time))
+            #elapsed_time = time.time() - s
+            #print("time: {0}".format(elapsed_time))
+            timecount = time.perf_counter() - start_time
             if Methods.finflag == 1 or limit != None and timecount > limit:
+                SRnum += i*ign + 1
                 break
 
         if Methods.finflag == 0:

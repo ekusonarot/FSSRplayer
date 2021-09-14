@@ -1,11 +1,25 @@
-51 animation exercises,
+51 animation exercises https://youtu.be/_1VZcrBMqLU,
 ,avgPSNR,avgSSIM,avgLPIPS,
 FSSR,28.7995,0.9629,0.0852,
-FSSRv2,29.0932,0.9780,0.0595
+FSSRv2,29.3511,0.9709,0.0919
 b1FSSRv2,29.3596,0.9799,0.0452
 b1s2FSSRv2,29.2251,0.97890.0463
+b50FSSRv2,29.3540,0.9705,0.0937
+b144FSSRv2,29.3521,0.9707,0.0927
 
-Best 1 minute INSPIRATIONAL video,
+Best 1 minute INSPIRATIONAL video https://youtu.be/BBvod49uySQ,
 ,avgPSNR,avgSSIM,avgLPIPS,
 FSSR,29.6802,0.8899,0.1632
+FSSRv2,29.2790,0.8870,0.1680
 b1FSSRv2,29.2365,0.8873,0.1872
+b144s5FSSRv2,29.2655,0.8868,0.1682
+
+Roma Acorn monochrome video https://youtu.be/JRnk1AHubqw,
+,avgPSNR,avgSSIM,avgLPIPS,
+FSSR,26.7466,0.7964.0.2164
+FSSRv2,25.3375,0.7864,0.1985
+
+Colorful Fruits and Vegetables... https://youtu.be/c6Pusffuwis,
+,avgPSNR,avgSSIM,avgLPIPS,
+FSSR,26.0597,0.9042,0.1096
+FSSRv2,26.7275,0.9086,0.0889
