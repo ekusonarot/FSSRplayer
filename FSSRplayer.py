@@ -6,8 +6,10 @@ import time
 from methods import Methods
 from utils import millisec
 import psutil
-import time
 import argparse
+import math
+
+SLEEP_TIME = 40
 
 def ShowFrames(SRframes, lock):
     lock.acquire()
@@ -24,6 +26,7 @@ def ShowFrames(SRframes, lock):
         out.write(SRframes[i])
         SRframes[i] = None
         seektime += wait
+    time.sleep(SLEEP_TIME)
     Methods.finflag = 1
     lock.release()
 
@@ -35,7 +38,6 @@ def Play():
             break
 
         ShowFrames(Methods.SRframes1, lock1)
-
         if len(Methods.SRframes2) == 0:
             cv2.destroyWindow(title)
             break
@@ -101,13 +103,12 @@ def SR(method, ign, buftime):
     batchcount = 1
     SRsum = 0
     Changesum = 0
-    SRprocess(frames1, Methods.SRframes1, method, ign, limit=buftime)
+    SRprocess(frames1, Methods.SRframes1, method, ign, limit=buftime)#, limit=buftime)
     Methods.finflag = 0
     event.set()
     while True:
         
         SRprocess(frames2, Methods.SRframes2, method, ign)
-
         WaitPlaying(lock1)
         if len(frames1) == 0:
             del Methods.SRframes1[0:]
@@ -124,7 +125,6 @@ def SR(method, ign, buftime):
             break
 
         SRprocess(frames1, Methods.SRframes1, method, ign)
-
         WaitPlaying(lock2)
         if len(frames2) == 0:
             del Methods.SRframes2[0:]
@@ -158,6 +158,7 @@ if __name__ == '__main__':
     parser.add_argument("-m","--method", type=str, choices=['FSSR', 'FSSRv2', 'NSSR', 'AFSSR', 'BIC'], default='FSSR')
     parser.add_argument("-e","--eval", action="store_true")
     parser.add_argument("-f","--faststart", action="store_true")
+    parser.add_argument("-v","--videopath", type=str, default="@")
     args = parser.parse_args()
 
     global outEval, faststart
@@ -166,6 +167,7 @@ if __name__ == '__main__':
     method = args.method
     outEval = args.eval
     faststart = args.faststart
+    videopath = args.videopath
 
     print("\n   --- Parameters ---   \n\
  Batchsize : {}\n\
@@ -181,27 +183,35 @@ if __name__ == '__main__':
 
     url = 'https://youtu.be/BBvod49uySQ' # Play video URL by Youtube
     #url = 'https://youtu.be/_1VZcrBMqLU' # monochro anime
-    url = 'https://youtu.be/JRnk1AHubqw' # monochro real
+    #url = 'https://youtu.be/JRnk1AHubqw' # monochro real
     #url = 'https://youtu.be/c6Pusffuwis' # color anime
     
-    vPafy = pafy.new(url)
-    play = vPafy.videostreams[1]
-    title = vPafy.title
 
     global cap, fps, width, height, framenum, bufframenum
-
-    cap = cv2.VideoCapture(play.url)
+    title = videopath
+    if videopath == "@" :
+        vPafy = pafy.new(url)
+        play = vPafy.videostreams[1]
+        title = vPafy.title
+        cap = cv2.VideoCapture(play.url)
+    else:
+        cap = cv2.VideoCapture(videopath)
     fps = cap.get(cv2.CAP_PROP_FPS)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)*4)
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)*4)
     framenum = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     bufframenum = int(buftime * fps)
-    time = int(framenum / fps)
+    videotime = int(framenum / fps)
+
+    global image_size, scale, block_size
+    Methods.image_size = (height//4, width//4)
+    Methods.scale = 4
+    Methods.block_size = math.gcd(Methods.image_size[0], Methods.image_size[1])
 
     print("   --- Play video ---   \n\
  Title : {}\n\
  Size  : {}x{}\n\
- Time  : {} sec\n".format(title, int(width/4), int(height/4), time))
+ Time  : {} sec\n".format(title, int(width/4), int(height/4), videotime))
     global frames1, frames2, out, wait, f
     frames1 = [None] * bufframenum
     frames2 = [None] * bufframenum
@@ -209,7 +219,7 @@ if __name__ == '__main__':
     Methods.SRframes2 = [None] * bufframenum
     Methods.finflag = 2
 
-    savedir = os.path.join("./videolog", vPafy.title)
+    savedir = os.path.join("./videolog", title)
     os.makedirs(savedir, exist_ok="True")
     savevideo = "{}{}{}_{}ign{}buftime.mp4".format(savedir, os.sep, method, ign, int(buftime))
     if method == "BIC":

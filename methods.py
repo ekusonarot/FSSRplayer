@@ -17,6 +17,9 @@ class Methods:
     finflag = None
     SRframes1 = None
     SRframes2 = None
+    block_size =0
+    scale = 0
+    image_size = (0, 0)
     def __init__(self):
         self.state = None
         warnings.filterwarnings("ignore", category=UserWarning)
@@ -124,11 +127,10 @@ class Methods:
         return SRnum, Changenum
     #####  myFSSR  #####
     def FSSRv2(self, frames, SRframes, algonum = 2, ign = 10, fps = 60., limit = None, faststart = False):
-        block_size = 16
-        scale = 4
-        image_size = (144, 256)
-        h_index = image_size[0]//block_size
-        w_index = image_size[1]//block_size
+        block_size = Methods.block_size
+        scale = Methods.scale
+        h_index = Methods.image_size[0]//block_size
+        w_index = Methods.image_size[1]//block_size
 
         torch.set_num_threads(self.usethreads) #Determine num of threads  
         filenum = len(SRframes)*h_index*w_index
