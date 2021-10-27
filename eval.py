@@ -5,7 +5,6 @@ import lpips
 from skimage.metrics import structural_similarity as ssim
 import argparse
 import time
-import pickle
 
 class Videolist:
     def __init__(self, videolist):

@@ -10,7 +10,7 @@ if __name__ == "__main__":
     #parser.add_argument("-j","--height",type=int)
     #args = parser.parse_args()
 
-    videos = ["tears_of_steel_1080p.mp4","Herzmark_Homestead.mp4","BigBuckBunny.mp4"]
+    videos = ["TearOfSteel.mp4","HerzmarkHomestead.mp4","BigBuckBunny.mp4"]
     #size = (256,144)
     #size = (320,180)
     #size = (480,270)
@@ -24,7 +24,7 @@ if __name__ == "__main__":
             savedir = "video"
             savedir = os.path.join(savedir,video)
             os.makedirs(savedir, exist_ok="True")
-            savevideo = "{}/{}_{}.avi".format(savedir,video,size)
+            savevideo = "{}/{}_{}p.avi".format(savedir,video.split('.')[0],size[1])
 
             cap = cv2.VideoCapture(video)
             fps = cap.get(cv2.CAP_PROP_FPS)
