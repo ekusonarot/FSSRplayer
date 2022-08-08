@@ -50,14 +50,16 @@ if __name__ == '__main__':
     maxPSNR = 0.
     maxSSIM = 0.
     maxLPIPS = 0.
-
+    
     for i in range(framenum):
         bic_time = time.perf_counter() 
         retSR, SRimage = SRvideo.read()
-        retHR, HRimage = HRvideo.read()   
+        retHR, HRimage = HRvideo.read()
         if retSR == False or retHR == False:
             print("\n ERROR Happened ")
             break
+        if SRimage.shape != HRimage.shape:
+            HRimage = cv2.resize(HRimage, dsize=SRimage.shape[1::-1])
 
         PSNRvalue = cv2.PSNR(SRimage, HRimage)
         SSIMvalue = ssim(SRimage, HRimage, multichannel = True)
