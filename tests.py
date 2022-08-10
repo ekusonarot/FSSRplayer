@@ -38,14 +38,23 @@ if __name__ == "__main__":
             count = 0
             while True:
                 ret, frame = cap.read()
+                #print("A {}".format(cap.get(cv2.CAP_PROP_POS_FRAMES)))
                 #'''
                 i = i+1
                 if flag_24fps or flag_30fps:
                     if i % 2 == 1:
-                        i += 1
+                        ret, test = cap.read()
+                        ret, test = cap.read()
+                        #print("B {}".format(cap.get(cv2.CAP_PROP_POS_FRAMES)))
+                        #cv2.imshow('Frame', test)
+                        #cv2.waitKey(33)
+                        i = i+1
                     if flag_24fps and i % 10 == 0:
-                        i += 1
-                cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+                        ret, test = cap.read()
+                        #print("C {}".format(cap.get(cv2.CAP_PROP_POS_FRAMES)))
+                        #cv2.imshow('Frame', test)
+                        #cv2.waitKey(33)
+                        i = i+1
                 #'''
                 if ret == False:
                     break

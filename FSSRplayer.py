@@ -216,10 +216,14 @@ if __name__ == '__main__':
     global cap, fps, width, height, framenum, bufframenum
     title = videopath
     if videopath == "@" :
-        vPafy = pafy.new(url)
-        play = vPafy.videostreams[1]
-        title = vPafy.title
-        cap = cv2.VideoCapture(play.url)
+        try:
+            vPafy = pafy.new(url)
+            play = vPafy.videostreams[1]
+            title = vPafy.title
+            cap = cv2.VideoCapture(play.url)
+        except:
+            title = url.split('/')[-1]
+            cap = cv2.VideoCapture(url)
     else:
         cap = cv2.VideoCapture(videopath)
     fps = cap.get(cv2.CAP_PROP_FPS)

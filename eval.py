@@ -29,7 +29,6 @@ if __name__ == '__main__':
         print("Input path is incorrect.")
         exit()
     framenum = int(SRvideo.get(cv2.CAP_PROP_FRAME_COUNT))
-    
     HRvideopath = args.ground_truth
     HRvideo = cv2.VideoCapture(HRvideopath)
     if HRvideo.isOpened() == False:
@@ -38,8 +37,8 @@ if __name__ == '__main__':
     print("\n----- Evaluation [{}] Start -----\n".format(os.path.basename(SRvideopath)))
     fps = HRvideo.get(cv2.CAP_PROP_FPS)
 
-    #lpips_model = lpips.LPIPS(net='alex')
-    lpips_model = lpips.LPIPS(net='alex').cuda() # Use CUDA gpu
+    lpips_model = lpips.LPIPS(net='alex')
+    #lpips_model = lpips.LPIPS(net='alex').cuda() # Use CUDA gpu
 
     sumPSNR = 0.
     sumSSIM = 0.
@@ -50,19 +49,18 @@ if __name__ == '__main__':
     maxPSNR = 0.
     maxSSIM = 0.
     maxLPIPS = 0.
-
+    i = 0
     for i in range(framenum):
         bic_time = time.perf_counter() 
         retSR, SRimage = SRvideo.read()
-        retHR, HRimage = HRvideo.read()   
+        retHR, HRimage = HRvideo.read()
         if retSR == False or retHR == False:
             print("\n ERROR Happened ")
             break
-
         PSNRvalue = cv2.PSNR(SRimage, HRimage)
         SSIMvalue = ssim(SRimage, HRimage, multichannel = True)
-        #LPIPSvalue = lpips_model(LPIPSpreprocess(SRimage), LPIPSpreprocess(HRimage))[0,0,0,0].item()
-        LPIPSvalue = lpips_model(LPIPSpreprocess(SRimage).cuda(), LPIPSpreprocess(HRimage).cuda()) # Use CUDA gpu
+        LPIPSvalue = lpips_model(LPIPSpreprocess(SRimage), LPIPSpreprocess(HRimage))[0,0,0,0].item()
+        #LPIPSvalue = lpips_model(LPIPSpreprocess(SRimage).cuda(), LPIPSpreprocess(HRimage).cuda()) # Use CUDA gpu
 
         sumPSNR += PSNRvalue
         sumSSIM += SSIMvalue
@@ -93,4 +91,10 @@ if __name__ == '__main__':
     print("\n ---Similalities between [{}] and [{}] ---\n   avgPSNR  : {}\n   avgSSIM  : {}\n   avgLPIPS : {}"\
 .format(os.path.basename(SRvideopath), os.path.basename(HRvideopath),avgPSNR,avgSSIM,avgLPIPS))
     print("\n ------------------------------------------\n\
+    \t\tmax\tmin\nPSNR:\t{}\t{}\nSSIM:\t{}\t{}\nLPIPS:\t{}\t{}".format(maxPSNR,minPSNR,maxSSIM,minSSIM,maxLPIPS,minLPIPS))
+
+    with open(".".join(SRvideopath.split('.')[:-1])+".txt",mode='w') as f:
+        f.write("\n ---Similalities between [{}] and [{}] ---\n   avgPSNR  : {}\n   avgSSIM  : {}\n   avgLPIPS : {}"\
+.format(os.path.basename(SRvideopath), os.path.basename(HRvideopath),avgPSNR,avgSSIM,avgLPIPS))
+        f.write("\n ------------------------------------------\n\
     \t\tmax\tmin\nPSNR:\t{}\t{}\nSSIM:\t{}\t{}\nLPIPS:\t{}\t{}".format(maxPSNR,minPSNR,maxSSIM,minSSIM,maxLPIPS,minLPIPS))

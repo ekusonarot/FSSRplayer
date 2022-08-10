@@ -186,7 +186,7 @@ class Methods:
             Luminance = Luminance.unsqueeze(1)
             
             with torch.no_grad():
-                preds = self.model(Luminance).mul(255.0)
+                preds = self.model(Luminance).mul(150.0)
             preds = preds.cpu().numpy().squeeze(1)
 
             if padding > 0:
