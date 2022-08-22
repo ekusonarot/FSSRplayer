@@ -7,10 +7,11 @@ import numpy as np
 from pathlib import Path
 import time
 from models import FSRCNN
-from utils import Converter, AlgorithmSelecter, calcChange, splitImages
+from utils import Converter, AlgorithmSelecter, calcChange, ConvertBgr2Ycbcr, Resize
 import warnings
 import torchvision.transforms as transforms
 import inferPSNR
+from ranking import Ranking, ToPatches
 
 class Methods:
 
@@ -24,24 +25,22 @@ class Methods:
         self.state = None
         warnings.filterwarnings("ignore", category=UserWarning)
         cudnn.benchmark = True
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         self.device = 'cpu'
         self.usethreads = torch.get_num_threads()-2 #useable thread num
-        #'''   FSRCNN
         self.model = FSRCNN(scale_factor=4).to(self.device)
         state_dict = self.model.state_dict()
         for n, p in torch.load("./weights/fsrcnn_x4.pth", map_location=lambda storage, loc: storage).items():
-        #for n, p in torch.load("./weights/best.pth", map_location=lambda storage, loc: storage).items():
             if n in state_dict.keys():
                 state_dict[n].copy_(p)
             else:
                 raise KeyError(n)
         self.model.eval()
-        ###
-        #self.inferPSNR = inferPSNR.InferPSNR()
-        #self.inferPSNR.load_state_dict(torch.load("./w/best.pth", map_location=self.device))
-        ###
-        #####################
+        self.ranking = Ranking(device=self.device)
+        self.ranking.load_state_dict(torch.load("weights/ranking.pth", map_location=self.device))
+        self.ranking.eval()
+        for i in self.ranking.parameters():
+            i.required_grad = False
+    
 
     def FSSR(self, frames, SRframes, algonum = 2, ign = 10, fps = 60., limit = None, faststart = False):
         torch.set_num_threads(self.usethreads) #Determine num of threads  
@@ -186,11 +185,10 @@ class Methods:
             Luminance = Luminance.unsqueeze(1)
             
             with torch.no_grad():
-                preds = self.model(Luminance).mul(150.0)
+                preds = self.model(Luminance).mul(255.0)
             preds = preds.cpu().numpy().squeeze(1)
 
             if padding > 0:
-                #output = np.array([preds[:,padding*scale:-padding*scale,padding*scale:-padding*scale], ycbcr[..., 1], ycbcr[..., 2]]).transpose([1, 2, 3, 0])
                 output = np.array([preds, ycbcr[..., 1], ycbcr[..., 2]]).transpose([1, 2, 3, 0])
             elif padding < 0:
                 output = np.array([preds, ycbcr[:,-padding*scale:padding*scale, -padding*scale:padding*scale, 1], ycbcr[:,-padding*scale:padding*scale, -padding*scale:padding*scale, 2]]).transpose([1, 2, 3, 0])
@@ -230,80 +228,70 @@ class Methods:
 
     ##########  Acceleration  #############
     def AFSSR(self, frames, SRframes, algonum = 2, ign = 10, fps = 60., limit = None, faststart = False):
-        torch.set_num_threads(self.usethreads) #Determine num of threads   
-        filenum = len(frames)
+        block_size = Methods.block_size
+        padding = 7
+        scale = Methods.scale
+        h_index = Methods.image_size[0]//block_size
+        w_index = Methods.image_size[1]//block_size
+        transform = transforms.Compose([
+            np.array,
+            ConvertBgr2Ycbcr(),
+            transforms.ToTensor(),
+        ])
+        input_tensor = torch.stack([transform(f) for f in frames], dim=0)
+        input_tensor = ToPatches((block_size, block_size), (padding, padding, padding, padding))(input_tensor)
 
-        algorithm = ['ORB','AGAST','FAST','MSER','AKAZE','BRISK','KAZE','BLOB']
+        torch.set_num_threads(self.usethreads) #Determine num of threads  
+        filenum = len(SRframes)*h_index*w_index
+
         isSR = [False] * filenum
         start_time = time.perf_counter()
 
         ##########  Ranking ##########
-        finder = AlgorithmSelecter(algonum)
-
-        keysum = 0
-        keylist = []
-
-        for i, image in enumerate(frames, 1):
-
-            kp = finder.detect(image)
-            keysum += len(kp)
-
-            if i % ign == 0:
-                keylist = keylist + [keysum]
-                keysum = 0
-
-            if i == len(frames) and i % ign != 0:
-                keysum = int(keysum * (ign / (i % ign)))
-                keylist = keylist + [keysum]
-
-        np_keylist = np.array(keylist)
-        ranklist = np.argsort(-np_keylist)
+        input = input_tensor[:, 0, :, :].unsqueeze(1)
+        rank = self.ranking(input)
+        rank = torch.argsort(rank, dim=0, descending=False).squeeze(1)
+        ranklist = rank.to('cpu').detach().numpy().copy()
 
         ########## SuperResolution ##########
 
-        bic_time = time.perf_counter() 
         for i, image in enumerate(frames, 0):
-            #SRframes[i] = cv2.resize(image, None, fx = 4, fy = 4, interpolation = cv2.INTER_CUBIC)
-            SRframes[i] = cv2.resize(image, dsize=(1040, 560), interpolation = cv2.INTER_CUBIC)
+            SRframes[i] = cv2.resize(image, None, fx = 4, fy = 4, interpolation = cv2.INTER_CUBIC)
 
         SRnum = 0
-        for i in range(filenum // ign):
-            if faststart and limit != None:
+        fin = False
+        
+        for i in range(0, filenum, ign):
+            if fin or faststart and limit != None:
                 break
-            for j in range(0, ign):
-                index = ranklist[i] * ign + j
-                if index >= filenum:
-                    SRnum = -ign + j
-                    continue
-                image = frames[index].astype(np.float32)
-                bicubic = SRframes[index].astype(np.float32)
-                Luminance = Converter.convert_bgr_to_y(image)
-                Luminance = torch.from_numpy(Luminance).to(self.device)
-                Luminance = Luminance.unsqueeze(0).unsqueeze(0)
-                Luminance = transforms.Resize((140,260))(Luminance)
+            indexlist = ranklist[i:i+ign]
+            Luminance = torch.stack([input_tensor[i, 0, :, :] for i in indexlist], dim=0).unsqueeze(1)
+            ycbcr = np.array([Resize(4., 4.)(input_tensor[i]) for i in indexlist])
 
-                ycbcr = Converter.convert_bgr_to_ycbcr(bicubic)
+            with torch.no_grad():
+                preds = self.model(Luminance/256.)*140
+            preds = preds.cpu().numpy().squeeze(1)
+            output = np.array([preds, ycbcr[:, 1, :, :], ycbcr[:, 2, :, :]]).transpose(1,2,3,0)
+            
+            for j, index in enumerate(indexlist):
+                x = index//(h_index*w_index)                                                  
+                y = index%(h_index*w_index)//w_index*block_size*scale
+                z = index%(h_index*w_index)%w_index*block_size*scale
+                
+                SRframes[x][y:y+block_size*scale,z:z+block_size*scale,:] =\
+                        np.clip(Converter.convert_ycbcr_to_bgr(output[j,padding*scale:-padding*scale,padding*scale:-padding*scale,:]), 0.0, 255.0).astype(np.uint8)
 
-                with torch.no_grad():
-                    preds, _ = self.accelerated_model(Luminance)
-                    preds = preds.mul(255.0)
-
-                preds = preds.cpu().numpy().squeeze(0).squeeze(0)
-                output = np.array([preds, ycbcr[..., 1], ycbcr[..., 2]]).transpose([1, 2, 0])
-                SRframes[index] = np.clip(Converter.convert_ycbcr_to_bgr(output), 0.0, 255.0).astype(np.uint8)
                 isSR[index] = True
-                timecount = time.perf_counter() - start_time 
+                timecount = time.perf_counter() - start_time
                 if Methods.finflag == 1 or limit != None and timecount > limit:
                     SRnum += i*ign + j + 1
+                    fin = True
                     break
-            if Methods.finflag == 1 or limit != None and timecount > limit:
-                break
 
-        if Methods.finflag == 0:
+        if fin == False and Methods.finflag == 0:
             SRnum = filenum
-        
         Changenum, self.state = calcChange(isSR, self.state)
-        return SRnum, Changenum
+        return filenum, SRnum, Changenum
 
     def NSSR(self, frames, SRframes, fps = 60., limit = None, faststart = False):
         torch.set_num_threads(self.usethreads) #Determine num of threads

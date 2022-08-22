@@ -90,10 +90,10 @@ def SRprocess(frames, SRframes, method, ign, limit = None):
         SRsum += SRnum
         Changesum += Changenum
     elif method == "AFSSR":
-        SRnum, Changenum = SRmethods.AFSSR(frames, SRframes, algonum, ign, fps, limit, faststart)
+        Filenum, SRnum, Changenum = SRmethods.AFSSR(frames, SRframes, algonum, ign, fps, limit, faststart)
 
         if outEval:
-            f.write("{},{},{}\n".format(batchcount, SRnum, Changenum))
+            f.write("{},{},{}\n".format(batchcount, SRnum, Changenum, Filenum))
 
         SRsum += SRnum
         Changesum += Changenum
