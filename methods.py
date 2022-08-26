@@ -131,6 +131,7 @@ class Methods:
         start_time = time.perf_counter()
 
         ##########  Ranking ##########
+        start = time.perf_counter()
         finder = AlgorithmSelecter(algonum)
 
         keysum = 0
@@ -150,7 +151,7 @@ class Methods:
         ranklist = np.argsort(-np_keylist)
         if F == False:
             ranklist = np.arange(0, filenum)
-
+        print(time.perf_counter() - start)
         ########## SuperResolution ##########
 
         bic_time = time.perf_counter() 
@@ -227,66 +228,100 @@ class Methods:
         return filenum, SRnum, Changenum
 
     ##########  Acceleration  #############
-    def AFSSR(self, frames, SRframes, algonum = 2, ign = 10, fps = 60., limit = None, faststart = False):
-        block_size = Methods.block_size
+    def AFSSR(self, frames, SRframes, algonum = 2, ign = 10, fps = 60., limit = None, faststart = False, F = False):
         padding = 7
+        m = 0
+        block_size = Methods.block_size
         scale = Methods.scale
         h_index = Methods.image_size[0]//block_size
         w_index = Methods.image_size[1]//block_size
-        transform = transforms.Compose([
-            np.array,
-            ConvertBgr2Ycbcr(),
-            transforms.ToTensor(),
-        ])
-        input_tensor = torch.stack([transform(f) for f in frames], dim=0)
-        input_tensor = ToPatches((block_size, block_size), (padding, padding, padding, padding))(input_tensor)
 
         torch.set_num_threads(self.usethreads) #Determine num of threads  
         filenum = len(SRframes)*h_index*w_index
 
+        algorithm = ['ORB','AGAST','FAST','MSER','AKAZE','BRISK','KAZE','BLOB']
         isSR = [False] * filenum
         start_time = time.perf_counter()
 
         ##########  Ranking ##########
-        input = input_tensor[:, 0, :, :].unsqueeze(1)
-        rank = self.ranking(input)
-        rank = torch.argsort(rank, dim=0, descending=False).squeeze(1)
-        ranklist = rank.to('cpu').detach().numpy().copy()
-
+        t = np.array([frames[index//(h_index*w_index)][index%(h_index*w_index)//w_index*block_size:index%(h_index*w_index)//w_index*block_size+block_size,index%(h_index*w_index)%w_index*block_size:index%(h_index*w_index)%w_index*block_size+block_size,:]
+            for index in range(filenum)
+        ])
+        tensor = torch.FloatTensor(t).transpose(2,3).transpose(1,2)
+        rank = self.ranking(tensor)
+        rank = torch.argsort(rank, dim=0, descending=False)
+        ranklist = rank.to('cpu').detach()
+        if F:
+            ranklist = np.arange(0, filenum)
         ########## SuperResolution ##########
 
+        bic_time = time.perf_counter() 
         for i, image in enumerate(frames, 0):
             SRframes[i] = cv2.resize(image, None, fx = 4, fy = 4, interpolation = cv2.INTER_CUBIC)
 
         SRnum = 0
         fin = False
+        if padding > 0:
+            frames = np.pad(np.array(frames), padding, "constant")[padding:-padding,:,:,padding:-padding]
         
-        for i in range(0, filenum, ign):
+        for i in range(filenum // ign):
             if fin or faststart and limit != None:
                 break
-            indexlist = ranklist[i:i+ign]
-            Luminance = torch.stack([input_tensor[i, 0, :, :] for i in indexlist], dim=0).unsqueeze(1)
-            ycbcr = np.array([Resize(4., 4.)(input_tensor[i]) for i in indexlist])
+            indexlist = ranklist[i*ign:i*ign+ign]
+            Luminance = {}
+            if padding >= 0:
+                Luminance = np.array([Converter.convert_bgr_to_y(frames[index//(h_index*w_index)]
+                    [index%(h_index*w_index)//w_index*block_size : index%(h_index*w_index)//w_index*block_size+block_size+padding*2,
+                    index%(h_index*w_index)%w_index*block_size : index%(h_index*w_index)%w_index*block_size+block_size+padding*2,:].
+                        astype(np.float32)) for index in indexlist])
+            else:
+                Luminance = np.array([Converter.convert_bgr_to_y(frames[index//(h_index*w_index)]
+                    [index%(h_index*w_index)//w_index*block_size-padding : index%(h_index*w_index)//w_index*block_size+block_size+padding,
+                    index%(h_index*w_index)%w_index*block_size-padding : index%(h_index*w_index)%w_index*block_size+block_size+padding,:].
+                        astype(np.float32)) for index in indexlist])
 
+            ycbcr = np.array([Converter.convert_bgr_to_ycbcr(SRframes[index//(h_index*w_index)]
+                [index%(h_index*w_index)//w_index*block_size*scale:index%(h_index*w_index)//w_index*block_size*scale+block_size*scale,
+                index%(h_index*w_index)%w_index*block_size*scale:index%(h_index*w_index)%w_index*block_size*scale+block_size*scale,:].astype(np.float32)) for index in indexlist])
+            Luminance = torch.from_numpy(Luminance).to(self.device)
+            Luminance = Luminance.unsqueeze(1)
+            
             with torch.no_grad():
-                preds = self.model(Luminance/256.)*140
+                preds = self.model(Luminance).mul(140.0)
             preds = preds.cpu().numpy().squeeze(1)
-            output = np.array([preds, ycbcr[:, 1, :, :], ycbcr[:, 2, :, :]]).transpose(1,2,3,0)
+
+            if padding > 0:
+                output = np.array([preds, ycbcr[..., 1], ycbcr[..., 2]]).transpose([1, 2, 3, 0])
+            elif padding < 0:
+                output = np.array([preds, ycbcr[:,-padding*scale:padding*scale, -padding*scale:padding*scale, 1], ycbcr[:,-padding*scale:padding*scale, -padding*scale:padding*scale, 2]]).transpose([1, 2, 3, 0])
+            else:
+                output = np.array([preds, ycbcr[..., 1], ycbcr[..., 2]]).transpose([1, 2, 3, 0])
             
             for j, index in enumerate(indexlist):
                 x = index//(h_index*w_index)                                                  
                 y = index%(h_index*w_index)//w_index*block_size*scale
                 z = index%(h_index*w_index)%w_index*block_size*scale
-                
-                SRframes[x][y:y+block_size*scale,z:z+block_size*scale,:] =\
-                        np.clip(Converter.convert_ycbcr_to_bgr(output[j,padding*scale:-padding*scale,padding*scale:-padding*scale,:]), 0.0, 255.0).astype(np.uint8)
-
+                if padding < 0:
+                    if m == 0:
+                        SRframes[x][y-padding*scale:y+block_size*scale+padding*scale,z-padding*scale:z+block_size*scale+padding*scale,:] =\
+                             np.clip(Converter.convert_ycbcr_to_bgr(output[j]), 0.0, 255.0).astype(np.uint8)
+                    else:
+                        SRframes[x][y-padding*scale+m:y+block_size*scale+padding*scale-m,z-padding*scale+m:z+block_size*scale+padding*scale-m,:] =\
+                             np.clip(Converter.convert_ycbcr_to_bgr(output[j,m:-m,m:-m,:]), 0.0, 255.0).astype(np.uint8)
+                else:
+                    if m == 0:
+                        SRframes[x][y:y+block_size*scale,z:z+block_size*scale,:] =\
+                             np.clip(Converter.convert_ycbcr_to_bgr(output[j]), 0.0, 255.0).astype(np.uint8)
+                    else:
+                        SRframes[x][y+m:y+block_size*scale-m,z+m:z+block_size*scale-m,:] =\
+                             np.clip(Converter.convert_ycbcr_to_bgr(output[j,m:-m,m:-m,:]), 0.0, 255.0).astype(np.uint8)
                 isSR[index] = True
                 timecount = time.perf_counter() - start_time
                 if Methods.finflag == 1 or limit != None and timecount > limit:
                     SRnum += i*ign + j + 1
                     fin = True
                     break
+            #'''
 
         if fin == False and Methods.finflag == 0:
             SRnum = filenum

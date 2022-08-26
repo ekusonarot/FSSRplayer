@@ -6,6 +6,7 @@ import math
 from torchviz import make_dot
 sys.path.append(os.path.abspath("."))
 from models import FSRCNN
+from utils import ConvertBgr2Ycbcr, ConvertYcbcr2Bgr
 
 class RankSR(torch.nn.Module):
   def __init__(self, scale_factor=4, patch_size=20, device="cpu"):
@@ -26,38 +27,30 @@ class RankSR(torch.nn.Module):
     for i in self.net1.parameters():
       i.requires_grad=False
 
-  def forward(self, x, is_train=True):
-    if is_train:
-      rank = self.ranking(x)
-      with torch.no_grad():
-        output1 = self.net1(x).detach()
-        output2 = self.net2(x).detach()
-      return rank, output1, output2
-    else:
-      rank = self.ranking(x)
-      return rank
+  def forward(self, x, ycbcr):
+    rank = self.ranking(x)
+    with torch.no_grad():
+      output1 = self.net1(ycbcr).detach()
+      output2 = self.net2(ycbcr).detach()
+    return rank, output1, output2
 
 class Ranking(torch.nn.Module):
   def __init__(self, device="cpu"):
     super(Ranking, self).__init__()
     self.downsample = torch.nn.Upsample(size=(20,20))
     self.conv2d_1 = torch.nn.Sequential(
-      torch.nn.Conv2d(1,8,3,padding=3//2),
-      torch.nn.Tanh(),
-      torch.nn.Conv2d(8,8,3,padding=3//2),
+      torch.nn.Conv2d(3,16,3,padding=3//2),
       torch.nn.Tanh(),
       torch.nn.MaxPool2d(2, stride=2)
     )
     self.conv2d_2 = torch.nn.Sequential(
-      torch.nn.Conv2d(8,4,1,padding=0),
+      torch.nn.Conv2d(16,4,3,padding=3//2),
       torch.nn.Tanh(),
-      torch.nn.Conv2d(4,4,1,padding=0),
-      torch.nn.Tanh(),
-      torch.nn.MaxPool2d(2, stride=2)
+      torch.nn.MaxPool2d(5, stride=5)
     )
     self.dense = torch.nn.Sequential(
       torch.nn.Flatten(),
-      torch.nn.Linear(100, 1),
+      torch.nn.Linear(16, 1),
       torch.nn.Tanhshrink()
     )
     self._initialize_weights()
