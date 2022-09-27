@@ -90,7 +90,7 @@ def SRprocess(frames, SRframes, method, ign, limit = None):
         SRsum += SRnum
         Changesum += Changenum
     elif method == "AFSSR":
-        Filenum, SRnum, Changenum = SRmethods.AFSSR(frames, SRframes, algonum, ign, fps, limit, faststart)
+        Filenum, SRnum, Changenum = SRmethods.AFSSR(frames, SRframes, ign, fps, limit, faststart, F=True)
 
         if outEval:
             f.write("{},{},{}\n".format(batchcount, SRnum, Changenum, Filenum))
@@ -123,7 +123,6 @@ def SR(method, ign, buftime):
     Methods.finflag = 0
     event.set()
     while True:
-        
         SRprocess(frames2, Methods.SRframes2, method, ign)
         WaitPlaying(lock1)
         if len(frames1) == 0:
@@ -162,7 +161,6 @@ def SR(method, ign, buftime):
                     f.write("Total,{},{}\n".format(SRsum, Changesum))
                 elif method == "NSSR":
                     f.write("Total,{}\n".format(SRsum))
-
             break
 
 def readframes(frames, avoidDrop = False):
@@ -174,6 +172,7 @@ def readframes(frames, avoidDrop = False):
             if ret == False:
                 del frames[i:]
                 break
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -249,7 +248,7 @@ if __name__ == '__main__':
     Methods.SRframes2 = [None] * bufframenum
     Methods.finflag = 0
 
-    savedir = os.path.join("./videolog", title)
+    savedir = os.path.join("./videolog", title.split("|")[0])
     os.makedirs(savedir, exist_ok="True")
     if args.compression:
         savevideo = "{}{}{}_{}ign{}buftime.avi".format(savedir, os.sep, method, ign, int(buftime))

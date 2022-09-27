@@ -38,27 +38,21 @@ class RankSR(torch.nn.Module):
       return rank
 
 class Ranking(torch.nn.Module):
-  def __init__(self, device="cpu"):
+  def __init__(self, device="cuda:0"):
     super(Ranking, self).__init__()
     self.downsample = torch.nn.Upsample(size=(20,20))
     self.conv2d_1 = torch.nn.Sequential(
-      torch.nn.Conv2d(1,8,3,padding=3//2),
-      torch.nn.Tanh(),
-      torch.nn.Conv2d(8,8,3,padding=3//2),
-      torch.nn.Tanh(),
-      torch.nn.MaxPool2d(2, stride=2)
+      torch.nn.Conv2d(3,3,3, padding=3//2),
+      torch.nn.LeakyReLU(),
+      torch.nn.AvgPool2d(2, stride=2),
+      torch.nn.Conv2d(3,1,3, padding=3//2),
+      torch.nn.LeakyReLU(),
+      torch.nn.AvgPool2d(2, stride=2),
     )
     self.conv2d_2 = torch.nn.Sequential(
-      torch.nn.Conv2d(8,4,1,padding=0),
-      torch.nn.Tanh(),
-      torch.nn.Conv2d(4,4,1,padding=0),
-      torch.nn.Tanh(),
-      torch.nn.MaxPool2d(2, stride=2)
-    )
-    self.dense = torch.nn.Sequential(
+      torch.nn.Conv2d(1,1,4, stride=5),
+      torch.nn.Tanhshrink(),
       torch.nn.Flatten(),
-      torch.nn.Linear(100, 1),
-      torch.nn.Tanhshrink()
     )
     self._initialize_weights()
 
@@ -71,16 +65,11 @@ class Ranking(torch.nn.Module):
       if isinstance(m, torch.nn.Conv2d):
         torch.nn.init.normal_(m.weight.data, mean=0.0, std=0.3)
         torch.nn.init.zeros_(m.bias.data)
-    for m in self.dense:
-      if isinstance(m, torch.nn.Linear):
-        torch.nn.init.normal_(m.weight.data, mean=0.0, std=0.3)
-        torch.nn.init.zeros_(m.bias.data)
 
   def forward(self, x):
     x = self.downsample(x)
     x = self.conv2d_1(x)
     x = self.conv2d_2(x)
-    x = self.dense(x)
     return x
 
 class CustomLoss(torch.nn.Module):

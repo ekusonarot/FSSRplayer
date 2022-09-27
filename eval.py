@@ -37,8 +37,8 @@ if __name__ == '__main__':
     print("\n----- Evaluation [{}] Start -----\n".format(os.path.basename(SRvideopath)))
     fps = HRvideo.get(cv2.CAP_PROP_FPS)
 
-    lpips_model = lpips.LPIPS(net='alex')
-    #lpips_model = lpips.LPIPS(net='alex').cuda() # Use CUDA gpu
+    #lpips_model = lpips.LPIPS(net='alex')
+    lpips_model = lpips.LPIPS(net='alex').cuda() # Use CUDA gpu
 
     sumPSNR = 0.
     sumSSIM = 0.
@@ -59,8 +59,8 @@ if __name__ == '__main__':
             break
         PSNRvalue = cv2.PSNR(SRimage, HRimage)
         SSIMvalue = ssim(SRimage, HRimage, multichannel = True)
-        LPIPSvalue = lpips_model(LPIPSpreprocess(SRimage), LPIPSpreprocess(HRimage))[0,0,0,0].item()
-        #LPIPSvalue = lpips_model(LPIPSpreprocess(SRimage).cuda(), LPIPSpreprocess(HRimage).cuda()) # Use CUDA gpu
+        #LPIPSvalue = lpips_model(LPIPSpreprocess(SRimage), LPIPSpreprocess(HRimage))[0,0,0,0].item()
+        LPIPSvalue = lpips_model(LPIPSpreprocess(SRimage).cuda(), LPIPSpreprocess(HRimage).cuda()) # Use CUDA gpu
 
         sumPSNR += PSNRvalue
         sumSSIM += SSIMvalue
