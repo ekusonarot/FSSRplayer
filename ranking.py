@@ -6,6 +6,7 @@ import math
 from torchviz import make_dot
 sys.path.append(os.path.abspath("."))
 from models import FSRCNN
+from utils import ConvertBgr2Ycbcr, ConvertYcbcr2Bgr
 
 class RankSR(torch.nn.Module):
   def __init__(self, scale_factor=4, patch_size=20, device="cpu"):
@@ -26,16 +27,12 @@ class RankSR(torch.nn.Module):
     for i in self.net1.parameters():
       i.requires_grad=False
 
-  def forward(self, x, is_train=True):
-    if is_train:
-      rank = self.ranking(x)
-      with torch.no_grad():
-        output1 = self.net1(x).detach()
-        output2 = self.net2(x).detach()
-      return rank, output1, output2
-    else:
-      rank = self.ranking(x)
-      return rank
+  def forward(self, x, ycbcr):
+    rank = self.ranking(x)
+    with torch.no_grad():
+      output1 = self.net1(ycbcr).detach()
+      output2 = self.net2(ycbcr).detach()
+    return rank, output1, output2
 
 class Ranking(torch.nn.Module):
   def __init__(self, device="cuda:0"):

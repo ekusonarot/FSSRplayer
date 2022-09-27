@@ -238,6 +238,7 @@ class Methods:
         torch.set_num_threads(self.usethreads) #Determine num of threads  
         filenum = len(SRframes)*h_index*w_index
 
+        algorithm = ['ORB','AGAST','FAST','MSER','AKAZE','BRISK','KAZE','BLOB']
         isSR = [False] * filenum
         start_time = time.perf_counter()
 

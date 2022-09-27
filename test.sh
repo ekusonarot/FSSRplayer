@@ -7,9 +7,9 @@ videos="BBB24fps/BBB24fps_144p.mp4"
 for video in $videos
 do
 name=(${video//// })
-python3 FSSRplayer.py -m AFSSR -c -u http://${server}/$video -e -s 10
-python3 eval.py -i videolog/${name[1]}/AFSSR_10ign10buftime.avi -gt GT/GT_${name[1]}
-rm videolog/${name[1]}/AFSSR_10ign10buftime.avi
+python3 FSSRplayer.py -m AFSSR -c -u http://${server}/$video -e -s 5
+python3 eval.py -i videolog/${name[1]}/AFSSR_10ign5buftime.avi -gt GT/GT_${name[1]}
+rm videolog/${name[1]}/AFSSR_10ign5buftime.avi
 #python3 FSSRplayer.py -m FSSRv2 -c -u http://${server}/$video -e -s 10
 #python3 eval.py -i videolog/${name[1]}/FSSRv2_10ign10buftime.avi -gt GT/GT_${name[1]}
 #rm videolog/${name[1]}/FSSRv2_10ign10buftime.avi
